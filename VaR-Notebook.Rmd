@@ -1,0 +1,182 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE)
+library(tidyverse)
+library(tidyquant)
+library(highcharter)
+library(timetk)
+library(tibbletime)
+
+load("book-data.Rdata")
+```
+
+- different ways of making data available to your audience
+- readability is part of reproducibility; 
+- conversant if not fluent
+- the scalpel example
+- Technology: Notebooks and Shiny
+- stacked rolling histograms - I don't like them, maybe you do, I prefer lines, or lines with total
+- probability will outperform 
+- up month or down month based on: previous 6 months, or previous 6 january's
+- how about a quick strategy
+- VaR monte carlo *good way to add more*
+
+
+
+```{r}
+portfolio_var_gaussian_xts <- VaR(portfolio_returns_xts_rebalanced_monthly, method = "gaussian")
+
+portfolio_var_gaussian_xts
+```
+
+```{r}
+portfolio_var_historical_xts <- VaR(portfolio_returns_xts_rebalanced_monthly, method = "historical")
+
+portfolio_var_historical_xts
+```
+
+```{r}
+portfolio_var_modified_xts <- VaR(portfolio_returns_xts_rebalanced_monthly, method = "modified")
+
+portfolio_var_modified_xts
+```
+
+```{r}
+kurt <- kurtosis(portfolio_returns_xts_rebalanced_monthly)
+skew <- skewness(portfolio_returns_xts_rebalanced_monthly)
+mean <- mean(portfolio_returns_xts_rebalanced_monthly)
+sd <- sd(portfolio_returns_xts_rebalanced_monthly)
+z <- -1.64
+mean + (z + 
+          (
+            (skew*(z^2 - 1))/6 + 
+            (kurt*(z^3 - (3*z)))/24 - 
+            (((skew ^2)*(2 * z^3 - (5 * z))))/36
+          )
+        /sd)
+
+```
+
+$$z_{cf}=q_{c}+frac{(q_{c}^{2}-1)S}{6}+frac{(q_{c}^{3}-3q_{c})K}{24}-frac{(2q_{c}^{3}-5q_{c})S^{2}}{36}$$
+
+```{r}
+zcf <- z + 
+          (
+            (skew*(z^2 - 1))/6 + 
+            (kurt*(z^3 - (3*z)))/24 - 
+            (((skew ^ 2)*(2 * z^3 - (5 * z))))/36
+          )
+
+mean - (zcf * sd)
+```
+
+
+$$modVaR =bar{R} - σ cdot z_{cf}$$
+```{r}
+probs <- c(.005, .025, .25, .5, .75, .975, .995)
+dist_log_returns <- 
+  
+  
+  portfolio_returns_dplyr_byhand$returns %>% 
+    quantile(probs = .95)
+
+portfolio_var_gaussian_xts <- VaR(portfolio_returns_xts_rebalanced_monthly, method = "gaussian")
+
+portfolio_var_gaussian_xts
+
+```
+
+```{r}
+# equivalent
+mean(portfolio_returns_xts_rebalanced_monthly) + ((-1.64485) * sd(portfolio_returns_xts_rebalanced_monthly))
+
+mu.hat = mean(portfolio_returns_tq_rebalanced_monthly$returns)
+sigma.hat = sd(portfolio_returns_tq_rebalanced_monthly$returns)
+mu.hat + sigma.hat*qnorm(0.05)
+```
+
+
+```{r}
+ES.fun = function(x, alpha=0.05) {
+  qhat = quantile(x, probs = alpha)
+  mean(x[x <= qhat])
+}
+ES.fun(portfolio_returns_tq_rebalanced_monthly$returns)
+```
+
+
+
+```{r}
+portfolio_returns_tq_rebalanced_monthly %>%
+    tq_performance(Ra = returns, Rb = NULL, performance_fun = VaR)
+```
+
+```{r}
+# Assuming it's normal
+VaR_guassian_byhand <-
+  qnorm(.05, 
+        mean(portfolio_returns_tq_rebalanced_monthly$returns), 
+        sd(portfolio_returns_tq_rebalanced_monthly$returns))
+
+
+VaR_guassian_tq <- 
+  portfolio_returns_tq_rebalanced_monthly %>%
+  tq_performance(Ra = returns,
+                 Rb = NULL,
+                 performance_fun = VaR, 
+                 p = .95, 
+                 method = "gaussian") %>% 
+  rename(VaR_tq = VaR)
+  
+VaR_guassian_xts <- 
+  
+  VaR(portfolio_returns_xts_rebalanced_monthly,
+                        method = "gaussian", 
+                        mu = mean(portfolio_returns_xts_rebalanced_monthly), 
+      sigma = var(portfolio_returns_xts_rebalanced_monthly)) 
+
+
+VaR_guassian_byhand
+VaR_guassian_xts
+VaR_guassian_tq
+```
+
+```{r}
+mean(portfolio_returns_tq_rebalanced_monthly$returns) + sd(portfolio_returns_tq_rebalanced_monthly$returns)*qnorm(0.05)
+```
+
+
+```{r}
+
+
+Var_historical <- quantile(portfolio_returns_xts_rebalanced_monthly, probs = .05)
+
+VaR_historical_tq <- 
+  portfolio_returns_tq_rebalanced_monthly %>%
+  tq_performance(Ra = returns,
+                 Rb = NULL,
+                 performance_fun = VaR, 
+                 p = .95, 
+                 method = "historical") %>% 
+  rename(VaR_tq = VaR)
+  
+VaR_historical_xts <- 
+  
+  VaR(portfolio_returns_xts_rebalanced_monthly,
+                        method = "historical")
+```
+
+```{r}
+portfolio_returns_tq_rebalanced_monthly %>% 
+  ggplot(aes(returns)) +
+  geom_histogram(binwidth = .003) +
+ geom_vline(xintercept = (-1.644 * sd(portfolio_returns_tq_rebalanced_monthly$returns), color = "blue") +
+  geom_vline(xintercept = -.0428, color = "red") +
+  geom_vline(xintercept = mean(portfolio_returns_tq_rebalanced_monthly$returns, color = "purple")) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 20))
+```
+
